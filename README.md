@@ -14,6 +14,16 @@ The default model is [`mlx-community/gemma-4-e2b-it-4bit`](https://huggingface.c
 
 ## Demo videos
 
+<p align="center">
+  <a href="https://youtu.be/kcu5w702m1I?si=shtMulNiIeZiRQAb">
+    <img src="https://img.youtube.com/vi/kcu5w702m1I/hqdefault.jpg" alt="bfagent walkthrough — part 1" width="380" />
+  </a>
+  &nbsp;
+  <a href="https://youtu.be/xv4_6sh0f90?si=r1HoHqUZ7Mh7vHcr">
+    <img src="https://img.youtube.com/vi/xv4_6sh0f90/hqdefault.jpg" alt="bfagent walkthrough — part 2" width="380" />
+  </a>
+</p>
+
 - [bfagent walkthrough — part 1](https://youtu.be/kcu5w702m1I?si=shtMulNiIeZiRQAb)
 - [bfagent walkthrough — part 2](https://youtu.be/xv4_6sh0f90?si=r1HoHqUZ7Mh7vHcr)
 
