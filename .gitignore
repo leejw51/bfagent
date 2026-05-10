@@ -36,6 +36,7 @@ app/bfagent
 app/bfagent-app
 app/bfagent-cli
 app/bin/
+app/bfagent.app/
 
 # macOS
 .DS_Store
