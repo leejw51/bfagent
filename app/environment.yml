@@ -1,0 +1,10 @@
+name: gemma4
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - mlx
+      - mlx-lm
+      - mlx-vlm

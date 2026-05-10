@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hello"
+version = "0.3.0"
+requires-python = ">=3.10"
+dependencies = [
+    "mlx-vlm",
+    "huggingface_hub",
+    "pycapnp",
+    "gradio",
+]
+
+[project.scripts]
+hello = "hello:main"
+program = "program:main"
+backend = "backend:main"
+frontend = "frontend:main"
+cli = "cli:main"
+
+[tool.setuptools]
+py-modules = ["hello", "program", "backend", "frontend", "schema", "cli", "session"]

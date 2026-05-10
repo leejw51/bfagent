@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+ENV/
+
+# Python build artifacts
+build/
+dist/
+empty-dist/
+*.whl
+*.tar.gz
+
+# Rust / Tauri
+target/
+**/target/
+*.rs.bk
+
+# Tauri build outputs
+app/tauri/gen/schemas/
+app/tauri/gen/apple/build/
+
+# Compiled binaries
+app/bfagent
+app/bfagent-app
+app/bfagent-cli
+app/bin/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.mp4
