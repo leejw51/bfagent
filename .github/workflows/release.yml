@@ -147,46 +147,49 @@ jobs:
           echo "Signed bfagent-app:"
           codesign -dv --verbose=2 "$BFAGENT_APP" 2>&1 | head -5
 
-      # ── Notarize all three in one submission ─────────────────────────
-      - name: Notarize binaries
+      # ── Build + sign + notarize + staple DMG ─────────────────────────
+      # DMGs (unlike raw Mach-O) accept a stapled notary ticket, so
+      # Gatekeeper can verify offline and Finder won't show the
+      # "Apple cannot check..." dialog on first launch.
+      - name: Build and notarize DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
         run: |
-          mkdir -p "$RUNNER_TEMP/notarize"
-          cp app/bin/bfagent app/bin/bfagent-cli app/bin/bfagent-app "$RUNNER_TEMP/notarize/"
-          (cd "$RUNNER_TEMP/notarize" && zip -r "$RUNNER_TEMP/notarize-bundle.zip" .)
+          mkdir -p dist/dmg-staging
+          cp app/bin/bfagent       dist/dmg-staging/bfagent
+          cp app/bin/bfagent-cli   dist/dmg-staging/bfagent-cli
+          cp app/bin/bfagent-app   dist/dmg-staging/bfagent-app
+          chmod +x dist/dmg-staging/bfagent dist/dmg-staging/bfagent-cli dist/dmg-staging/bfagent-app
 
-          echo "Submitting bundle for notarization..."
-          xcrun notarytool submit "$RUNNER_TEMP/notarize-bundle.zip" \
+          DMG="dist/bfagent-macos-arm64.dmg"
+          hdiutil create -volname "bfagent" \
+            -srcfolder dist/dmg-staging \
+            -ov -format UDZO \
+            "$DMG"
+
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
+            --timestamp "$DMG"
+
+          echo "Submitting DMG for notarization..."
+          xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$TEAM_ID" \
             --wait --timeout 20m
 
-          # Stapling raw Mach-O binaries is unsupported; Gatekeeper looks
-          # the ticket up online on first launch. Best-effort attempts:
-          xcrun stapler staple app/bin/bfagent 2>/dev/null || echo "Staple skipped for bfagent"
-          xcrun stapler staple app/bin/bfagent-cli 2>/dev/null || echo "Staple skipped for bfagent-cli"
-          xcrun stapler staple app/bin/bfagent-app 2>/dev/null || echo "Staple skipped for bfagent-app"
+          echo "Stapling DMG..."
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
 
-      # ── Package final distribution zip ───────────────────────────────
-      - name: Package release zip
-        run: |
-          mkdir -p dist/staging
-          cp app/bin/bfagent       dist/staging/bfagent
-          cp app/bin/bfagent-cli   dist/staging/bfagent-cli
-          cp app/bin/bfagent-app   dist/staging/bfagent-app
-          chmod +x dist/staging/bfagent dist/staging/bfagent-cli dist/staging/bfagent-app
-          (cd dist/staging && zip "../bfagent-macos-arm64.zip" bfagent bfagent-cli bfagent-app)
-          rm -rf dist/staging
+          rm -rf dist/dmg-staging
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: bfagent-macos-arm64
-          path: dist/bfagent-macos-arm64.zip
+          path: dist/bfagent-macos-arm64.dmg
 
       # ── Cleanup keychain ─────────────────────────────────────────────
       - name: Cleanup keychain
