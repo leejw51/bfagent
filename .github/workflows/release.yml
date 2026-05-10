@@ -27,10 +27,10 @@ jobs:
         with:
           targets: aarch64-apple-darwin
 
-      # ── Build all three binaries via the app Makefile ─────────────────
-      - name: Build binaries
+      # ── Build the bfagent.app bundle (also produces the three binaries) ─
+      - name: Build app bundle
         working-directory: app
-        run: make package
+        run: make app
 
       # ── Import codesigning certificate ────────────────────────────────
       - name: Import codesigning certificate
@@ -117,73 +117,83 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.allow-unsigned-executable-memory bool true" entitlements.plist
           /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" entitlements.plist
 
-      # ── Sign all three binaries ──────────────────────────────────────
-      - name: Codesign binaries
+      # ── Codesign the .app bundle (deepest-first) ─────────────────────
+      # codesign requires nested Mach-Os to be signed before the
+      # enclosing bundle, otherwise the outer signature won't seal.
+      # The bundle's main executable (bfagent-app, per CFBundleExecutable)
+      # gets the JIT entitlements when we sign the bundle as a whole.
+      - name: Codesign app bundle
         run: |
-          BFAGENT="app/bin/bfagent"
-          BFAGENT_CLI="app/bin/bfagent-cli"
-          BFAGENT_APP="app/bin/bfagent-app"
+          set -e
+          APP="app/bfagent.app"
+
+          echo "[codesign] signing nested CLI launchers (no entitlements)"
+          codesign --force --options runtime \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            --timestamp \
+            "$APP/Contents/MacOS/bfagent"
 
           codesign --force --options runtime \
             --sign "$APPLE_SIGNING_IDENTITY" \
             --timestamp \
-            "$BFAGENT"
+            "$APP/Contents/MacOS/bfagent-cli"
 
-          codesign --force --options runtime \
-            --sign "$APPLE_SIGNING_IDENTITY" \
-            --timestamp \
-            "$BFAGENT_CLI"
-
+          echo "[codesign] signing bundle (entitlements apply to main executable)"
           codesign --force --options runtime \
             --sign "$APPLE_SIGNING_IDENTITY" \
             --entitlements entitlements.plist \
             --timestamp \
-            "$BFAGENT_APP"
+            "$APP"
 
-          echo "Signed bfagent:"
-          codesign -dv --verbose=2 "$BFAGENT" 2>&1 | head -5
-          echo "Signed bfagent-cli:"
-          codesign -dv --verbose=2 "$BFAGENT_CLI" 2>&1 | head -5
-          echo "Signed bfagent-app:"
-          codesign -dv --verbose=2 "$BFAGENT_APP" 2>&1 | head -5
+          echo "[codesign] verifying bundle"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=2 "$APP" 2>&1 | head -10
 
-      # ── Build + sign + notarize + staple DMG ─────────────────────────
-      # DMGs (unlike raw Mach-O) accept a stapled notary ticket, so
-      # Gatekeeper can verify offline and Finder won't show the
-      # "Apple cannot check..." dialog on first launch.
-      - name: Build and notarize DMG
+      # ── Notarize + staple the .app, then drop into signed DMG ────────
+      # The .app carries the stapled ticket; once stapled, the bundle
+      # validates with Gatekeeper offline even after extraction from
+      # the DMG. The DMG itself only needs to be signed, not notarized.
+      - name: Notarize app and build DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
         run: |
-          mkdir -p dist/dmg-staging
-          cp app/bin/bfagent       dist/dmg-staging/bfagent
-          cp app/bin/bfagent-cli   dist/dmg-staging/bfagent-cli
-          cp app/bin/bfagent-app   dist/dmg-staging/bfagent-app
-          chmod +x dist/dmg-staging/bfagent dist/dmg-staging/bfagent-cli dist/dmg-staging/bfagent-app
+          set -e
+          APP="app/bfagent.app"
+          ZIP="app/bfagent.app.zip"
 
-          DMG="dist/bfagent-macos-arm64.dmg"
-          hdiutil create -volname "bfagent" \
-            -srcfolder dist/dmg-staging \
-            -ov -format UDZO \
-            "$DMG"
+          echo "[notarize] zipping bundle for submission"
+          ditto -c -k --keepParent "$APP" "$ZIP"
 
-          codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
-            --timestamp "$DMG"
-
-          echo "Submitting DMG for notarization..."
-          xcrun notarytool submit "$DMG" \
+          echo "[notarize] submitting to Apple (this can take several minutes)"
+          xcrun notarytool submit "$ZIP" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$TEAM_ID" \
             --wait --timeout 20m
 
-          echo "Stapling DMG..."
-          xcrun stapler staple "$DMG"
-          xcrun stapler validate "$DMG"
+          echo "[notarize] stapling ticket to bundle"
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
 
-          rm -rf dist/dmg-staging
+          echo "[dmg] staging stapled bundle"
+          mkdir -p dist/dmg-staging
+          # ditto preserves the xattrs that hold the stapled ticket
+          ditto "$APP" "dist/dmg-staging/bfagent.app"
+
+          DMG="dist/bfagent-macos-arm64.dmg"
+          echo "[dmg] building $DMG"
+          hdiutil create -volname "bfagent" \
+            -srcfolder dist/dmg-staging \
+            -ov -format UDZO \
+            "$DMG"
+
+          echo "[dmg] signing DMG"
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
+            --timestamp "$DMG"
+
+          rm -rf dist/dmg-staging "$ZIP"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
