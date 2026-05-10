@@ -1,5 +1,9 @@
 # bfagent
 
+<p align="center">
+  <img src="app/tauri/icons/icon.png" alt="bfagent icon" width="160" />
+</p>
+
 A local vision-language chat agent for Apple Silicon, built around **Gemma 4** via [MLX](https://github.com/ml-explore/mlx). The runtime is split into three pieces that talk to each other over [Cap'n Proto](https://capnproto.org/) RPC:
 
 - **`bfagent`** — headless backend + Gradio web UI
@@ -7,6 +11,11 @@ A local vision-language chat agent for Apple Silicon, built around **Gemma 4** v
 - **`bfagent-app`** — Tauri native-window wrapper that launches the backend and points a webview at the UI
 
 The default model is [`mlx-community/gemma-4-e2b-it-4bit`](https://huggingface.co/mlx-community/gemma-4-e2b-it-4bit), a 4-bit quantized Gemma 4 with vision support. Override it for any binary or helper script by setting `BFAGENT_MODEL` (see `app/.env.example`). It runs entirely on-device — no API keys, no network calls after the first model download.
+
+## Demo videos
+
+- [bfagent walkthrough — part 1](https://youtu.be/kcu5w702m1I?si=shtMulNiIeZiRQAb)
+- [bfagent walkthrough — part 2](https://youtu.be/xv4_6sh0f90?si=r1HoHqUZ7Mh7vHcr)
 
 ## Requirements
 
