@@ -191,7 +191,8 @@ jobs:
 
           echo "[dmg] signing DMG"
           codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
-            --timestamp "$DMG"
+            --timestamp \
+            "$DMG"
 
           rm -rf dist/dmg-staging "$ZIP"
 
