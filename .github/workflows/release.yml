@@ -58,17 +58,30 @@ jobs:
             exit 1
           fi
 
-          # OpenSSL diagnostic only — non-fatal. Keychain p12 exports use
-          # varying PBE algorithms; OpenSSL with or without -legacy may
-          # reject files that `security import` accepts natively.
-          echo "=== openssl pkcs12 diagnostic (informational) ==="
-          if openssl pkcs12 -in "$P12_PATH" -nokeys -passin "pass:$P12_PASSWORD" -info -legacy >/dev/null 2>&1; then
-            echo "openssl(-legacy): password OK"
-          elif openssl pkcs12 -in "$P12_PATH" -nokeys -passin "pass:$P12_PASSWORD" -info >/dev/null 2>&1; then
-            echo "openssl(default): password OK"
+          # OpenSSL diagnostic only — non-fatal. macOS runners may ship
+          # LibreSSL (no -legacy flag) or Homebrew OpenSSL 3.x; keychain
+          # p12 exports vary in PBE algorithm. Print both attempts' stderr
+          # so failures are interpretable, then let `security import` —
+          # which is native and doesn't use openssl — be authoritative.
+          echo "=== openssl info ==="
+          which openssl || true
+          openssl version || true
+          echo "P12_PASSWORD length=${#P12_PASSWORD}"
+
+          echo "=== openssl pkcs12 -legacy ==="
+          openssl pkcs12 -in "$P12_PATH" -nokeys -passin "pass:$P12_PASSWORD" -info -legacy 2>&1 | head -10 || true
+          legacy_rc=${PIPESTATUS[0]}
+          echo "exit(legacy)=$legacy_rc"
+
+          echo "=== openssl pkcs12 (default) ==="
+          openssl pkcs12 -in "$P12_PATH" -nokeys -passin "pass:$P12_PASSWORD" -info 2>&1 | head -10 || true
+          default_rc=${PIPESTATUS[0]}
+          echo "exit(default)=$default_rc"
+
+          if [ "$legacy_rc" = "0" ] || [ "$default_rc" = "0" ]; then
+            echo "openssl: at least one mode read the .p12 successfully"
           else
-            echo "openssl could not read this .p12 — informational only; security(1) is authoritative"
-            openssl pkcs12 -in "$P12_PATH" -nokeys -passin "pass:$P12_PASSWORD" -info -legacy 2>&1 | head -5 || true
+            echo "openssl: neither mode read the .p12 — informational only, continuing to security(1)"
           fi
 
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
