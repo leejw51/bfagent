@@ -18,11 +18,14 @@ PYAPP_ROOT      := build/pyapp
 PYAPP_ROOT_CLI  := build/pyapp-cli
 WHEEL           := $(DIST_DIR)/$(APP_NAME)-$(VERSION)-py3-none-any.whl
 
+APP_BUNDLE      := bfagent.app
+APP_BUNDLE_ID   := com.bfagent.app
+
 PIDFILE     := /tmp/bfagent.pid
 
 SOURCES := pyproject.toml hello.py program.py backend.py frontend.py schema.py cli.py session.py gemma.capnp
 
-.PHONY: help all wheel package package-py package-cli package-tauri run debug client install stop clear clean distclean
+.PHONY: help all wheel package package-py package-cli package-tauri app run debug client install stop clear clean distclean
 
 PYAPP_CACHE := $(HOME)/Library/Application Support/pyapp/hello
 
@@ -37,6 +40,7 @@ help:
 	@echo "    make package-py      build only ./$(BINARY) (Python pyapp)"
 	@echo "    make package-cli     build only ./$(BINARY_CLI) (terminal client pyapp)"
 	@echo "    make package-tauri   build only ./$(TAURI_BIN) (native window wrapper)"
+	@echo "    make app             package, then wrap all three binaries in ./$(APP_BUNDLE)"
 	@echo "    make wheel           build the Python wheel only"
 	@echo ""
 	@echo "  Run:"
@@ -119,6 +123,53 @@ $(TAURI_BIN): $(TAURI_DIR)/Cargo.toml $(TAURI_DIR)/src/main.rs $(TAURI_DIR)/taur
 	cd $(TAURI_DIR) && cargo build --release
 	cp $(TAURI_DIR)/target/release/$(TAURI_BIN) $(TAURI_BIN)
 
+# Wrap all three binaries in a single .app bundle. macOS treats the whole
+# bundle as one signing/staple unit, which lets a downloaded .app survive
+# Finder's Gatekeeper UX even when copied out of a DMG — raw Mach-O can't
+# carry a stapled notary ticket, but a bundle can.
+#
+# Layout:
+#   $(APP_BUNDLE)/Contents/Info.plist
+#   $(APP_BUNDLE)/Contents/MacOS/$(TAURI_BIN)   ← CFBundleExecutable (GUI entry)
+#   $(APP_BUNDLE)/Contents/MacOS/$(BINARY)      ← embedded for terminal use
+#   $(APP_BUNDLE)/Contents/MacOS/$(BINARY_CLI)  ← embedded for terminal use
+#   $(APP_BUNDLE)/Contents/Resources/icon.png
+define INFO_PLIST_BODY
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>          <string>$(APP_BUNDLE_ID)</string>
+  <key>CFBundleName</key>                <string>$(BINARY)</string>
+  <key>CFBundleDisplayName</key>         <string>$(BINARY)</string>
+  <key>CFBundleExecutable</key>          <string>$(TAURI_BIN)</string>
+  <key>CFBundleVersion</key>             <string>$(VERSION)</string>
+  <key>CFBundleShortVersionString</key>  <string>$(VERSION)</string>
+  <key>CFBundlePackageType</key>         <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>      <string>11.0</string>
+  <key>NSHighResolutionCapable</key>     <true/>
+</dict>
+</plist>
+endef
+export INFO_PLIST_BODY
+
+app: package
+	@echo "[app] assembling $(APP_BUNDLE)..."
+	@rm -rf $(APP_BUNDLE)
+	@mkdir -p $(APP_BUNDLE)/Contents/MacOS $(APP_BUNDLE)/Contents/Resources
+	@cp $(BIN_DIR)/$(BINARY)     $(APP_BUNDLE)/Contents/MacOS/$(BINARY)
+	@cp $(BIN_DIR)/$(BINARY_CLI) $(APP_BUNDLE)/Contents/MacOS/$(BINARY_CLI)
+	@cp $(BIN_DIR)/$(TAURI_BIN)  $(APP_BUNDLE)/Contents/MacOS/$(TAURI_BIN)
+	@chmod +x $(APP_BUNDLE)/Contents/MacOS/*
+	@cp $(TAURI_DIR)/icons/icon.png $(APP_BUNDLE)/Contents/Resources/icon.png
+	@printf '%s\n' "$$INFO_PLIST_BODY" > $(APP_BUNDLE)/Contents/Info.plist
+	@plutil -lint $(APP_BUNDLE)/Contents/Info.plist >/dev/null
+	@echo ""
+	@echo "built ./$(APP_BUNDLE)"
+	@echo "  GUI:    open ./$(APP_BUNDLE)         # or double-click in Finder"
+	@echo "  CLI:    ./$(APP_BUNDLE)/Contents/MacOS/$(BINARY_CLI)"
+	@echo "  agent:  ./$(APP_BUNDLE)/Contents/MacOS/$(BINARY)"
+
 run: package
 	./$(TAURI_BIN)
 
@@ -183,7 +234,7 @@ clear:
 	@echo "next ./$(BINARY) launch will re-extract the wheel."
 
 clean:
-	rm -rf $(DIST_DIR) build *.egg-info $(BINARY) $(BINARY_CLI) $(TAURI_BIN) $(BIN_DIR)
+	rm -rf $(DIST_DIR) build *.egg-info $(BINARY) $(BINARY_CLI) $(TAURI_BIN) $(BIN_DIR) $(APP_BUNDLE)
 
 distclean: clean
 	rm -rf $(PYAPP_ROOT) $(PYAPP_ROOT_CLI) $(TAURI_DIR)/target
