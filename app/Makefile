@@ -46,7 +46,7 @@ help:
 	@echo "  Run:"
 	@echo "    make run             package, then launch ./$(TAURI_BIN) (native window)"
 	@echo "    make debug           fast path: run backend+frontend in current $(PYTHON) — no rust build"
-	@echo "    make client          run cli.py in current $(PYTHON) — pass args via ARGS=..."
+	@echo "    make client          run cli.py in current $(PYTHON) — defaults to repl, pass ARGS=... to override"
 	@echo "    make install         conda install runtime deps into the active env (pip for mlx)"
 	@echo "    make format          format Python sources with black"
 	@echo "    make stop            kill running bfagent + bfagent-app"
@@ -175,9 +175,10 @@ run: package
 
 # Run the CLI in the active interpreter without packaging. Pass args via
 # ARGS=... e.g.  make client ARGS="ping"  or  make client ARGS="chat 'hi'"
-# With no ARGS, cli.py prints its own --help.
+# With no ARGS, drop straight into the interactive REPL — the typical
+# second-terminal use case after `make debug`.
 client:
-	@$(PYTHON) cli.py $(ARGS)
+	@$(PYTHON) cli.py $(if $(strip $(ARGS)),$(ARGS),repl)
 
 # Fast iteration loop: skip the wheel/pyapp/Tauri builds and just run the
 # Python orchestrator (program.py) under whatever interpreter $(PYTHON)
