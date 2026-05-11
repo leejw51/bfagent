@@ -39,7 +39,9 @@ async def _connect():
     return client.bootstrap().cast_as(GemmaAgent)
 
 
-def _build_chat_request(agent, *, message, history, image_bytes, image_mime, max_tokens):
+def _build_chat_request(
+    agent, *, message, history, image_bytes, image_mime, max_tokens
+):
     """Build a chat request the safe, explicit way (avoids auto-coercion edge cases)."""
     req = agent.chat_request()
     req.message = str(message or "")
@@ -77,8 +79,12 @@ async def test_explicit_empty_history():
     async with capnp.kj_loop():
         agent = await _connect()
         req = _build_chat_request(
-            agent, message="Reply: HELLO", history=[],
-            image_bytes=b"", image_mime="", max_tokens=10,
+            agent,
+            message="Reply: HELLO",
+            history=[],
+            image_bytes=b"",
+            image_mime="",
+            max_tokens=10,
         )
         r = await req.send()
         assert r.error == "", f"error: {r.error!r}"
@@ -98,7 +104,9 @@ async def test_explicit_with_history():
             agent,
             message="What is my favourite colour? Answer in one word.",
             history=history,
-            image_bytes=b"", image_mime="", max_tokens=15,
+            image_bytes=b"",
+            image_mime="",
+            max_tokens=15,
         )
         r = await req.send()
         assert r.error == "", f"error: {r.error!r}"
@@ -119,7 +127,9 @@ async def test_kwargs_with_history():
             r = await agent.chat(
                 message="What did I just say?",
                 history=history,
-                imageBytes=b"", imageMime="", maxTokens=20,
+                imageBytes=b"",
+                imageMime="",
+                maxTokens=20,
             )
         except Exception as e:
             print(f"  REPRO: kwargs form raises {type(e).__name__}: {e}")
@@ -142,7 +152,9 @@ async def test_image_input():
             agent,
             message="Describe the image in a single short sentence.",
             history=[],
-            image_bytes=data, image_mime="image/jpeg", max_tokens=80,
+            image_bytes=data,
+            image_mime="image/jpeg",
+            max_tokens=80,
         )
         r = await req.send()
         assert r.error == "", f"error: {r.error!r}"
@@ -155,8 +167,26 @@ async def test_serialized_concurrent():
     async with capnp.kj_loop():
         agent = await _connect()
         a, b = await asyncio.gather(
-            (_build_chat_request(agent, message="Reply: ALPHA", history=[], image_bytes=b"", image_mime="", max_tokens=10)).send(),
-            (_build_chat_request(agent, message="Reply: BETA",  history=[], image_bytes=b"", image_mime="", max_tokens=10)).send(),
+            (
+                _build_chat_request(
+                    agent,
+                    message="Reply: ALPHA",
+                    history=[],
+                    image_bytes=b"",
+                    image_mime="",
+                    max_tokens=10,
+                )
+            ).send(),
+            (
+                _build_chat_request(
+                    agent,
+                    message="Reply: BETA",
+                    history=[],
+                    image_bytes=b"",
+                    image_mime="",
+                    max_tokens=10,
+                )
+            ).send(),
         )
         assert a.error == "" and b.error == ""
         assert a.reply and b.reply
@@ -165,7 +195,10 @@ async def test_serialized_concurrent():
 
 async def main():
     if not _wait_for_backend(timeout=60):
-        print(f"[test] backend not reachable on {HOST}:{PORT} — start ./bfagent first", file=sys.stderr)
+        print(
+            f"[test] backend not reachable on {HOST}:{PORT} — start ./bfagent first",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     await test_kwargs_empty_history()

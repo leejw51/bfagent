@@ -67,7 +67,9 @@ class GemmaAgentImpl(GemmaAgent.Server):
         prompt = apply_chat_template(self.processor, self.config, text)
         return prompt, {}, None
 
-    async def chat(self, message, history, imageBytes, imageMime, maxTokens, _context, **_):
+    async def chat(
+        self, message, history, imageBytes, imageMime, maxTokens, _context, **_
+    ):
         async with self._lock:
             try:
                 tok = int(maxTokens) or 4096
@@ -76,8 +78,12 @@ class GemmaAgentImpl(GemmaAgent.Server):
                 )
                 try:
                     result = generate(
-                        self.model, self.processor, prompt,
-                        max_tokens=tok, verbose=False, **gen_kwargs,
+                        self.model,
+                        self.processor,
+                        prompt,
+                        max_tokens=tok,
+                        verbose=False,
+                        **gen_kwargs,
                     )
                 finally:
                     if tmp_path:
@@ -93,7 +99,9 @@ class GemmaAgentImpl(GemmaAgent.Server):
                 _context.results.reply = ""
                 _context.results.error = f"{type(e).__name__}: {e}"
 
-    async def chatStream(self, message, history, imageBytes, imageMime, maxTokens, sink, _context, **_):
+    async def chatStream(
+        self, message, history, imageBytes, imageMime, maxTokens, sink, _context, **_
+    ):
         """Server-streaming variant. mlx_vlm.stream_generate is a synchronous
         generator, but each `next()` call (= one token of model inference)
         is short — on the order of 10 ms — so iterating it directly on the
@@ -115,8 +123,11 @@ class GemmaAgentImpl(GemmaAgent.Server):
                 err = ""
                 try:
                     for r in stream_generate(
-                        self.model, self.processor, prompt,
-                        max_tokens=tok, **gen_kwargs,
+                        self.model,
+                        self.processor,
+                        prompt,
+                        max_tokens=tok,
+                        **gen_kwargs,
                     ):
                         text = getattr(r, "text", "") or ""
                         if text:

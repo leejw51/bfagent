@@ -30,9 +30,7 @@ CHAT_PATH = Path(
     os.environ.get("BFAGENT_CHAT", str(Path.home() / ".bfagent" / "chat.jsonl"))
 )
 CHAT_IMAGES_DIR = Path(
-    os.environ.get(
-        "BFAGENT_CHAT_IMAGES", str(Path.home() / ".bfagent" / "chat-images")
-    )
+    os.environ.get("BFAGENT_CHAT_IMAGES", str(Path.home() / ".bfagent" / "chat-images"))
 )
 CHAT_MAX_BYTES = int(os.environ.get("BFAGENT_CHAT_MAX_BYTES", str(5 * 1024 * 1024)))
 DEFAULT_FONT_SIZE = 16
@@ -69,7 +67,8 @@ def _read_last(kind: str):
 def _append(record: dict) -> None:
     PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
     record = {
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z") or time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        or time.strftime("%Y-%m-%dT%H:%M:%S"),
         **record,
     }
     with PREFS_PATH.open("a", encoding="utf-8") as f:
@@ -268,7 +267,10 @@ SPRITES = {
     },
     "thinking": {
         "palette": {
-            "X": "#a5f3fc", "E": "#1e3a8a", "M": "#1e40af", "B": "#fbbf24",
+            "X": "#a5f3fc",
+            "E": "#1e3a8a",
+            "M": "#1e40af",
+            "B": "#fbbf24",
         },
         "grid": (
             "......B."
@@ -378,15 +380,22 @@ def render_avatar(state: str) -> str:
         '<svg class="bf-avatar" viewBox="0 0 8 8" shape-rendering="crispEdges" '
         'xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">'
         + "".join(rects)
-        + '</svg>'
+        + "</svg>"
         f'<div class="bf-avatar-label">{label}</div>'
-        '</div>'
+        "</div>"
     )
 
 
 _POSITIVE_WORDS = (
-    "great", "good", "yes", "happy", "perfect", "awesome",
-    "sure", "nice", "cool",
+    "great",
+    "good",
+    "yes",
+    "happy",
+    "perfect",
+    "awesome",
+    "sure",
+    "nice",
+    "cool",
 )
 _LOVE_WORDS = ("thank", "love", "appreciate", "grateful", "❤", "♥")
 _WINK_WORDS = ("haha", "lol", "joking", "kidding", "just kidding", ";)", ";-)")
@@ -465,11 +474,18 @@ _AVATAR_RE = re.compile(
 # rare — every new letter is one more thing the model can confuse.
 AVATAR_PALETTE = {
     ".": None,
-    "K": "#0f172a", "W": "#f8fafc",
-    "R": "#dc2626", "O": "#f97316", "Y": "#facc15",
-    "G": "#22c55e", "C": "#22d3ee", "B": "#3b82f6",
-    "P": "#a855f7", "M": "#ec4899",
-    "S": "#fde68a", "N": "#92400e",
+    "K": "#0f172a",
+    "W": "#f8fafc",
+    "R": "#dc2626",
+    "O": "#f97316",
+    "Y": "#facc15",
+    "G": "#22c55e",
+    "C": "#22d3ee",
+    "B": "#3b82f6",
+    "P": "#a855f7",
+    "M": "#ec4899",
+    "S": "#fde68a",
+    "N": "#92400e",
 }
 
 
@@ -485,7 +501,7 @@ def extract_mood(reply):
     name = m.group(1).lower()
     if name not in SPRITES:
         return None, reply
-    cleaned = (reply[: m.start()] + reply[m.end():]).lstrip("\n").strip()
+    cleaned = (reply[: m.start()] + reply[m.end() :]).lstrip("\n").strip()
     return name, cleaned
 
 
@@ -503,7 +519,7 @@ def extract_avatar_block(reply):
     rows = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     if len(rows) < 4 or any(len(ln) > 20 for ln in rows):
         return None, reply
-    cleaned = (reply[: m.start()] + reply[m.end():]).strip()
+    cleaned = (reply[: m.start()] + reply[m.end() :]).strip()
     return rows[:AVATAR_GRID], cleaned
 
 
@@ -517,18 +533,16 @@ def render_avatar_grid(rows, label="custom"):
             color = AVATAR_PALETTE.get(ch.upper())
             if not color:
                 continue
-            rects.append(
-                f'<rect x="{x}" y="{y}" width="1" height="1" fill="{color}"/>'
-            )
+            rects.append(f'<rect x="{x}" y="{y}" width="1" height="1" fill="{color}"/>')
     return (
         '<div class="bf-avatar-wrap">'
         f'<svg class="bf-avatar" viewBox="0 0 {AVATAR_GRID} {AVATAR_GRID}" '
         'shape-rendering="crispEdges" '
         'xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">'
         + "".join(rects)
-        + '</svg>'
+        + "</svg>"
         f'<div class="bf-avatar-label">{label}</div>'
-        '</div>'
+        "</div>"
     )
 
 
@@ -1022,7 +1036,9 @@ def build_ui():
                 gr.Markdown("### Image input")
                 image = gr.Image(type="filepath", show_label=False, height=220)
                 with gr.Accordion("Generation settings", open=False):
-                    max_tokens = gr.Slider(50, 8192, value=4096, step=128, label="Max tokens")
+                    max_tokens = gr.Slider(
+                        50, 8192, value=4096, step=128, label="Max tokens"
+                    )
                     stream_enabled = gr.Checkbox(
                         value=True,
                         label="Stream replies",
@@ -1216,9 +1232,7 @@ def build_ui():
         font_dec.click(
             font_dec_fn, [font_state, family_state], [font_state, font_style]
         )
-        font_reset.click(
-            font_reset_fn, family_state, [font_state, font_style]
-        )
+        font_reset.click(font_reset_fn, family_state, [font_state, font_style])
         font_family_dd.change(
             family_change_fn,
             [font_family_dd, font_state],
@@ -1267,6 +1281,7 @@ def _probe_backend(timeout: float = 3.0) -> tuple[bool, str]:
     misconfigured BFAGENT_PORT shows up at startup rather than as a cryptic
     Cap'n Proto error mid-chat."""
     import socket as _s
+
     try:
         with _s.create_connection((BACKEND_HOST, BACKEND_PORT), timeout=timeout):
             return True, f"connected to backend at {BACKEND_HOST}:{BACKEND_PORT}"

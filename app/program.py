@@ -106,6 +106,7 @@ def main():
     print("[bfagent] backend ready, launching frontend ...", flush=True)
     try:
         from frontend import main as frontend_main
+
         frontend_main()
     except KeyboardInterrupt:
         print("\n[bfagent] shutting down.", flush=True)

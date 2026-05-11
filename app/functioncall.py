@@ -38,7 +38,10 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "n": {"type": "integer", "description": "Index of the Fibonacci number"},
+                    "n": {
+                        "type": "integer",
+                        "description": "Index of the Fibonacci number",
+                    },
                 },
                 "required": ["n"],
             },
@@ -93,11 +96,13 @@ def parse_tool_calls(text):
             for pair in body.split(","):
                 k, _, v = pair.partition(":")
                 args[k.strip()] = _parse_value(v)
-        calls.append({
-            "id": f"call_{i}",
-            "type": "function",
-            "function": {"name": m.group("name"), "arguments": args},
-        })
+        calls.append(
+            {
+                "id": f"call_{i}",
+                "type": "function",
+                "function": {"name": m.group("name"), "arguments": args},
+            }
+        )
     return calls
 
 
@@ -112,7 +117,9 @@ def main():
     model, processor = load(MODEL)
     tokenizer = processor.tokenizer
 
-    user_msg = "Compute Fibonacci(10), then tell me the current UTC time and local time."
+    user_msg = (
+        "Compute Fibonacci(10), then tell me the current UTC time and local time."
+    )
     print(f"\nUser: {user_msg}")
 
     messages = [{"role": "user", "content": user_msg}]
@@ -137,11 +144,13 @@ def main():
             except Exception as e:
                 result = f"Error: {e}"
             print(f"  {name}({args}) -> {result}")
-            messages.append({
-                "role": "tool",
-                "tool_call_id": c["id"],
-                "content": str(result),
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": c["id"],
+                    "content": str(result),
+                }
+            )
 
 
 if __name__ == "__main__":

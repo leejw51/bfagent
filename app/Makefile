@@ -25,7 +25,7 @@ PIDFILE     := /tmp/bfagent.pid
 
 SOURCES := pyproject.toml hello.py program.py backend.py frontend.py schema.py cli.py session.py gemma.capnp
 
-.PHONY: help all wheel package package-py package-cli package-tauri app run debug client install stop clear clean distclean
+.PHONY: help all wheel package package-py package-cli package-tauri app run debug client install format stop clean distclean
 
 PYAPP_CACHE := $(HOME)/Library/Application Support/pyapp/hello
 
@@ -48,11 +48,11 @@ help:
 	@echo "    make debug           fast path: run backend+frontend in current $(PYTHON) — no rust build"
 	@echo "    make client          run cli.py in current $(PYTHON) — pass args via ARGS=..."
 	@echo "    make install         conda install runtime deps into the active env (pip for mlx)"
+	@echo "    make format          format Python sources with black"
 	@echo "    make stop            kill running bfagent + bfagent-app"
 	@echo ""
 	@echo "  Clean:"
-	@echo "    make clear           wipe the pyapp launch cache (forces fresh wheel extraction)"
-	@echo "    make clean           remove build outputs and binaries"
+	@echo "    make clean           remove build outputs, binaries, and pyapp launch cache"
 	@echo "    make distclean       also remove pyapp + tauri build caches"
 	@echo ""
 	@echo "  Standalone:"
@@ -208,6 +208,12 @@ install:
 	conda install -y -c conda-forge pycapnp huggingface_hub
 	$(PYTHON) -m pip install --upgrade gradio mlx mlx-lm mlx-vlm
 
+# Format Python sources with black. Runs black against the current directory
+# and lets it skip the usual build/cache trees via its default excludes.
+format:
+	@command -v black >/dev/null 2>&1 || $(PYTHON) -m pip install --quiet black
+	$(PYTHON) -m black .
+
 stop:
 	@if [ -f $(PIDFILE) ]; then \
 	  pid=$$(cat $(PIDFILE) 2>/dev/null); \
@@ -228,13 +234,9 @@ stop:
 	-@pkill -KILL -f "from backend import main" 2>/dev/null || true
 	@echo "stopped."
 
-clear:
-	@echo "wiping pyapp launch cache: $(PYAPP_CACHE)"
-	@rm -rf "$(PYAPP_CACHE)"
-	@echo "next ./$(BINARY) launch will re-extract the wheel."
-
 clean:
 	rm -rf $(DIST_DIR) build *.egg-info $(BINARY) $(BINARY_CLI) $(TAURI_BIN) $(BIN_DIR) $(APP_BUNDLE)
+	@rm -rf "$(PYAPP_CACHE)"
 
 distclean: clean
 	rm -rf $(PYAPP_ROOT) $(PYAPP_ROOT_CLI) $(TAURI_DIR)/target

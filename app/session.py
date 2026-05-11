@@ -32,9 +32,7 @@ import os
 from pathlib import Path
 
 SESSIONS_PATH = Path(
-    os.environ.get(
-        "BFAGENT_SESSIONS", str(Path.home() / ".bfagent" / "sessions.jsonl")
-    )
+    os.environ.get("BFAGENT_SESSIONS", str(Path.home() / ".bfagent" / "sessions.jsonl"))
 )
 
 

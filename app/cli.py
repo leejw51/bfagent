@@ -198,7 +198,10 @@ def cmd_chat(args: argparse.Namespace) -> int:
     if args.stream:
         err, _reply = asyncio.run(
             _chat_stream(
-                args.host, args.port, args.message, [],
+                args.host,
+                args.port,
+                args.message,
+                [],
                 image_path=args.image,
                 mime_override=args.mime,
                 max_tokens=args.max_tokens,
@@ -207,7 +210,10 @@ def cmd_chat(args: argparse.Namespace) -> int:
     else:
         err, reply = asyncio.run(
             _chat_blocking(
-                args.host, args.port, args.message, [],
+                args.host,
+                args.port,
+                args.message,
+                [],
                 image_path=args.image,
                 mime_override=args.mime,
                 max_tokens=args.max_tokens,
@@ -241,7 +247,10 @@ def cmd_repl(args: argparse.Namespace) -> int:
             if args.stream:
                 err, reply = asyncio.run(
                     _chat_stream(
-                        args.host, args.port, msg, history,
+                        args.host,
+                        args.port,
+                        msg,
+                        history,
                         max_tokens=args.max_tokens,
                         sink_prefix="bot> ",
                     )
@@ -249,7 +258,10 @@ def cmd_repl(args: argparse.Namespace) -> int:
             else:
                 err, reply = asyncio.run(
                     _chat_blocking(
-                        args.host, args.port, msg, history,
+                        args.host,
+                        args.port,
+                        msg,
+                        history,
                         max_tokens=args.max_tokens,
                     )
                 )
@@ -301,11 +313,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
-        "--host", default=DEFAULT_HOST,
+        "--host",
+        default=DEFAULT_HOST,
         help=f"backend host (default {DEFAULT_HOST}, env BFAGENT_HOST)",
     )
     p.add_argument(
-        "--port", type=int, default=DEFAULT_PORT,
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
         help=f"backend RPC port (default {DEFAULT_PORT}, env BFAGENT_PORT)",
     )
 
@@ -316,11 +331,15 @@ def build_parser() -> argparse.ArgumentParser:
         # --no-stream issues a single chat() call and prints the full reply.
         g = p.add_mutually_exclusive_group()
         g.add_argument(
-            "--stream", dest="stream", action="store_true",
+            "--stream",
+            dest="stream",
+            action="store_true",
             help="print tokens live as they're generated (default)",
         )
         g.add_argument(
-            "--no-stream", dest="stream", action="store_false",
+            "--no-stream",
+            dest="stream",
+            action="store_false",
             help="wait for the full reply, then print it",
         )
         p.set_defaults(stream=True)
@@ -333,7 +352,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="override MIME type (auto-inferred from --image extension if omitted)",
     )
     pc.add_argument(
-        "--max-tokens", type=int, default=DEFAULT_MAX_TOKENS,
+        "--max-tokens",
+        type=int,
+        default=DEFAULT_MAX_TOKENS,
         help=f"generation cap (default {DEFAULT_MAX_TOKENS})",
     )
     _add_stream_flags(pc)
@@ -341,7 +362,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     pr = sub.add_parser("repl", help="interactive multi-turn chat session")
     pr.add_argument(
-        "--max-tokens", type=int, default=DEFAULT_MAX_TOKENS,
+        "--max-tokens",
+        type=int,
+        default=DEFAULT_MAX_TOKENS,
         help=f"generation cap per turn (default {DEFAULT_MAX_TOKENS})",
     )
     _add_stream_flags(pr)

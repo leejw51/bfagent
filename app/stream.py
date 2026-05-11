@@ -66,8 +66,11 @@ def main() -> int:
     t_start = time.monotonic()
 
     for r in stream_generate(
-        model, processor, templated,
-        max_tokens=DEFAULT_MAX_TOKENS, **gen_kwargs,
+        model,
+        processor,
+        templated,
+        max_tokens=DEFAULT_MAX_TOKENS,
+        **gen_kwargs,
     ):
         total_yields += 1
         text = getattr(r, "text", "") or ""

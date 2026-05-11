@@ -42,7 +42,9 @@ def main():
 
     q = config.get("quantization") or text_cfg.get("quantization")
     if q:
-        print(f"Quantization: {q.get('bits', '?')}-bit (group {q.get('group_size', '?')})")
+        print(
+            f"Quantization: {q.get('bits', '?')}-bit (group {q.get('group_size', '?')})"
+        )
 
     print()
     print("Modalities:")
@@ -64,7 +66,9 @@ def main():
     disk = sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
     print()
     print(f"Stored tensor elements: {total_elems:,} (~{total_elems/1e9:.2f}B)")
-    print("  (4-bit weights are packed; logical param count is higher — see model name.)")
+    print(
+        "  (4-bit weights are packed; logical param count is higher — see model name.)"
+    )
     print(f"Disk size:              {human(disk)}")
 
 

@@ -110,9 +110,7 @@ def generate_once(model, processor, config, user_prompt: str) -> None:
     chat_prompt = apply_chat_template(processor, config, full)
     print("\nGenerating...\n")
     # 16x16 = 256 chars + newlines + tag overhead, so allow a generous budget.
-    out = generate(
-        model, processor, chat_prompt, max_tokens=900, verbose=False
-    )
+    out = generate(model, processor, chat_prompt, max_tokens=900, verbose=False)
     text = out if isinstance(out, str) else getattr(out, "text", str(out))
     print("--- raw model output ---")
     print(text)
@@ -135,8 +133,10 @@ def main():
     print("Loading model...")
     model, processor = load(model_path)
     config = load_config(model_path)
-    print(f"Ready. {GRID}x{GRID} pixel-art generator. "
-          "Type a prompt and press Enter. Empty line or 'quit' to exit.")
+    print(
+        f"Ready. {GRID}x{GRID} pixel-art generator. "
+        "Type a prompt and press Enter. Empty line or 'quit' to exit."
+    )
 
     # Honor an optional argv prompt as the first iteration, then keep looping.
     seed = " ".join(sys.argv[1:]).strip() if len(sys.argv) > 1 else None
