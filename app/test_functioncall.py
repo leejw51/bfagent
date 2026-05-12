@@ -112,5 +112,23 @@ class RunPythonTimeoutTests(unittest.TestCase):
         self.assertLess(elapsed, 5.0, "timeout should fire well under 5s")
 
 
+class RunPythonTruncationTests(unittest.TestCase):
+    def test_long_stdout_truncated(self):
+        import os, importlib
+        os.environ["BFAGENT_PY_MAXBYTES"] = "1024"
+        import functioncall
+        importlib.reload(functioncall)
+        # Print well past 1 KB.
+        result = functioncall.run_python("print('x' * 100000)")
+        os.environ.pop("BFAGENT_PY_MAXBYTES", None)
+        importlib.reload(functioncall)
+        self.assertTrue(result["truncated"])
+        # Truncated marker is appended after the cap.
+        self.assertIn("[truncated]", result["stdout"])
+        # Total length is cap + marker (a few dozen bytes), well under
+        # the raw 100000 the subprocess produced.
+        self.assertLess(len(result["stdout"]), 2048)
+
+
 if __name__ == "__main__":
     unittest.main()
