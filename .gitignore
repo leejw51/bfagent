@@ -58,3 +58,5 @@ app/bfagent.app/
 .env.local
 .env.*.local
 *.mp4
+app/.claude/
+

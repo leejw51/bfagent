@@ -9,7 +9,10 @@ from mlx_vlm.prompt_utils import apply_chat_template
 from mlx_vlm.utils import load_config
 
 import session
+from functioncall import IMPL, TOOLS, parse_tool_calls
 from schema import GemmaAgent
+
+MAX_TOOL_ROUNDS = int(os.environ.get("BFAGENT_MAX_TOOL_ROUNDS", "4"))
 
 MODEL = os.environ.get("BFAGENT_MODEL", "mlx-community/gemma-4-e2b-it-4bit")
 HOST = os.environ.get("BFAGENT_HOST", "127.0.0.1")
@@ -40,6 +43,78 @@ def render_prompt(message, history):
         content = getattr(t, "content", None) or t["content"] or ""
         lines.append(f"{role}: {content}")
     return "\n".join(lines) + f"\nUser: {message}\nAssistant:"
+
+
+def build_messages(message, history):
+    msgs = []
+    for t in history:
+        role = getattr(t, "role", None) or t["role"] or ""
+        content = getattr(t, "content", None) or t["content"] or ""
+        if role:
+            msgs.append({"role": role, "content": content})
+    msgs.append({"role": "user", "content": str(message or "")})
+    return msgs
+
+
+def run_tool_loop(model, processor, messages, max_tokens):
+    """Drive a tool-calling loop using the HF tokenizer chat template
+    (which understands `tools=`). Returns the final assistant text once
+    the model stops emitting <|tool_call> blocks. Text-only — no image
+    support, since the multimodal apply_chat_template path doesn't
+    thread tools through.
+
+    Fallback: if every round emits tool calls (and we therefore never
+    get a clean natural-language reply), synthesize a response from the
+    executed tool results. Without this, a successful tool execution
+    followed by a quirky round-2 generation would surface as an empty
+    bot> line in the CLI, which looks like total failure."""
+    tokenizer = processor.tokenizer
+    executed = []  # [(name, args, result), ...] across all rounds
+    for round_idx in range(1, MAX_TOOL_ROUNDS + 1):
+        prompt = tokenizer.apply_chat_template(
+            messages, tools=TOOLS, add_generation_prompt=True, tokenize=False
+        )
+        out = generate(
+            model, processor, prompt, max_tokens=max_tokens, verbose=False
+        )
+        text = getattr(out, "text", str(out)).strip()
+        calls = parse_tool_calls(text)
+        print(
+            f"[backend] tool-loop round={round_idx} "
+            f"calls={len(calls)} text_len={len(text)}",
+            flush=True,
+        )
+        if not calls:
+            # Gemma 4 sometimes emits an empty round-2 turn after seeing
+            # the tool response (the chat template's tool-result framing
+            # doesn't always cue a follow-up). Don't surface that as a
+            # blank bot reply — fall back to the tool results we already
+            # ran so the user always sees the answer they asked for.
+            if not text and executed:
+                return "\n".join(f"{n}() = {r}" for n, _, r in executed)
+            return text
+        messages.append({"role": "assistant", "content": "", "tool_calls": calls})
+        for c in calls:
+            name = c["function"]["name"]
+            args = c["function"]["arguments"]
+            try:
+                result = IMPL[name](**args)
+            except Exception as e:
+                result = f"Error: {e}"
+            executed.append((name, args, result))
+            print(f"[backend] tool {name}({args}) -> {result}", flush=True)
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": c["id"],
+                    "content": str(result),
+                }
+            )
+    # Loop exhausted with the model still wanting more tool calls.
+    # Surface what we ran so the user isn't left staring at a blank line.
+    if executed:
+        return "\n".join(f"{n}() = {r}" for n, _, r in executed)
+    return ""
 
 
 class GemmaAgentImpl(GemmaAgent.Server):
@@ -73,6 +148,16 @@ class GemmaAgentImpl(GemmaAgent.Server):
         async with self._lock:
             try:
                 tok = int(maxTokens) or 4096
+                data = bytes(imageBytes) if imageBytes else b""
+                if not data:
+                    messages = build_messages(message, history)
+                    reply = run_tool_loop(self.model, self.processor, messages, tok)
+                    if not reply:
+                        reply = "[empty model output — check backend logs]"
+                    _context.results.reply = reply
+                    _context.results.error = ""
+                    return
+
                 prompt, gen_kwargs, tmp_path = self._build_prompt_and_image(
                     message, history, imageBytes, imageMime
                 )
@@ -116,6 +201,27 @@ class GemmaAgentImpl(GemmaAgent.Server):
             tmp_path = None
             try:
                 tok = int(maxTokens) or 4096
+                data = bytes(imageBytes) if imageBytes else b""
+
+                # Text-only: take the tool-calling path. Tool calls have
+                # to be parsed from the *complete* assistant turn before
+                # we can act on them, so we buffer and emit the final
+                # text as one chunk instead of streaming tokens.
+                if not data:
+                    messages = build_messages(message, history)
+                    err = ""
+                    try:
+                        reply = run_tool_loop(
+                            self.model, self.processor, messages, tok
+                        )
+                        if not reply:
+                            reply = "[empty model output — check backend logs]"
+                        await sink.chunk(text=reply)
+                    except Exception as e:
+                        err = f"{type(e).__name__}: {e}"
+                    await sink.done(error=err)
+                    return
+
                 prompt, gen_kwargs, tmp_path = self._build_prompt_and_image(
                     message, history, imageBytes, imageMime
                 )

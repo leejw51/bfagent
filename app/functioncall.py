@@ -15,18 +15,17 @@ def fibonacci(n):
     return a
 
 
-def get_utc_time():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def get_local_time():
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+def get_current_time():
+    now_utc = datetime.now(timezone.utc)
+    return {
+        "utc": now_utc.isoformat(timespec="seconds"),
+        "local": now_utc.astimezone().isoformat(timespec="seconds"),
+    }
 
 
 IMPL = {
     "fibonacci": fibonacci,
-    "get_utc_time": get_utc_time,
-    "get_local_time": get_local_time,
+    "get_current_time": get_current_time,
 }
 
 TOOLS = [
@@ -50,16 +49,8 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "get_utc_time",
-            "description": "Return the current UTC time in ISO 8601 format.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_local_time",
-            "description": "Return the current local time in ISO 8601 format with timezone offset.",
+            "name": "get_current_time",
+            "description": "Return the current time as an object with two fields: 'utc' (ISO 8601 UTC) and 'local' (ISO 8601 with local timezone offset).",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -118,7 +109,7 @@ def main():
     tokenizer = processor.tokenizer
 
     user_msg = (
-        "Compute Fibonacci(10), then tell me the current UTC time and local time."
+        "Compute Fibonacci(10), then tell me the current time (UTC and local)."
     )
     print(f"\nUser: {user_msg}")
 
