@@ -21,4 +21,4 @@ frontend = "frontend:main"
 cli = "cli:main"
 
 [tool.setuptools]
-py-modules = ["hello", "program", "backend", "frontend", "schema", "cli", "session"]
+py-modules = ["hello", "program", "backend", "frontend", "schema", "cli", "session", "functioncall"]

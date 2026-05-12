@@ -23,7 +23,7 @@ APP_BUNDLE_ID   := com.bfagent.app
 
 PIDFILE     := /tmp/bfagent.pid
 
-SOURCES := pyproject.toml hello.py program.py backend.py frontend.py schema.py cli.py session.py gemma.capnp
+SOURCES := pyproject.toml hello.py program.py backend.py frontend.py schema.py cli.py session.py functioncall.py gemma.capnp
 
 .PHONY: help all wheel package package-py package-cli package-tauri app run debug client install format stop clean distclean
 
