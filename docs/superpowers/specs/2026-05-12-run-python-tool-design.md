@@ -120,7 +120,8 @@ wiring needed.
 
 ## Packaging compatibility
 
-No Makefile changes are required.
+The runtime path does not need Makefile changes — `sys.executable` is
+well-defined in both modes:
 
 - `make debug` runs `program.py` under the active interpreter; the
   subprocess spawns under the same interpreter.
@@ -133,8 +134,12 @@ No Makefile changes are required.
 - The Tauri wrapper just launches the pyapp binary, so it inherits this
   behavior unchanged.
 
-The wheel's `SOURCES` list in the Makefile already includes
-`functioncall.py`, so the change ships in the wheel automatically.
+However, the build path needs a one-time fix: `functioncall.py` is
+imported by `backend.py` but was missing from both
+`pyproject.toml:py-modules` and `Makefile:SOURCES`, so the wheel did
+not include it and the pyapp binary would have failed at import time.
+This is a pre-existing gap that must be closed as part of this work for
+the run_python tool to be reachable in packaged mode.
 
 ## Testing plan
 
