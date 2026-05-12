@@ -130,5 +130,18 @@ class RunPythonTruncationTests(unittest.TestCase):
         self.assertLess(len(result["stdout"]), 2048)
 
 
+class RegistrationTests(unittest.TestCase):
+    def test_run_python_in_impl(self):
+        from functioncall import IMPL
+        self.assertIn("run_python", IMPL)
+
+    def test_run_python_in_tools(self):
+        from functioncall import TOOLS
+        names = [t["function"]["name"] for t in TOOLS]
+        self.assertIn("run_python", names)
+        spec = next(t for t in TOOLS if t["function"]["name"] == "run_python")
+        self.assertEqual(spec["function"]["parameters"]["required"], ["code"])
+
+
 if __name__ == "__main__":
     unittest.main()

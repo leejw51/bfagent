@@ -76,6 +76,7 @@ def run_python(code):
 IMPL = {
     "fibonacci": fibonacci,
     "get_current_time": get_current_time,
+    "run_python": run_python,
 }
 
 TOOLS = [
@@ -102,6 +103,31 @@ TOOLS = [
             "name": "get_current_time",
             "description": "Return the current time as an object with two fields: 'utc' (ISO 8601 UTC) and 'local' (ISO 8601 with local timezone offset).",
             "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_python",
+            "description": (
+                "Execute a Python snippet in an isolated subprocess and return "
+                "its stdout, stderr, and exit code. Each call is independent — "
+                "no shared globals, no shared cwd, no persistent state between "
+                "calls. Use this when you need to compute something, manipulate "
+                "data, or check the environment by running Python code. The "
+                "snippet is run with a wall-clock timeout and per-stream output "
+                "cap; long-running or noisy code will be killed or truncated."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Python source to execute as if passed to `python -c`.",
+                    },
+                },
+                "required": ["code"],
+            },
         },
     },
 ]
