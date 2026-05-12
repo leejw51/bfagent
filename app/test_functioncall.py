@@ -93,5 +93,24 @@ class RunPythonHappyPathTests(unittest.TestCase):
         self.assertEqual(result["stdout"], "")
 
 
+class RunPythonTimeoutTests(unittest.TestCase):
+    def test_infinite_loop_times_out(self):
+        import os, time
+        os.environ["BFAGENT_PY_TIMEOUT"] = "1"
+        # Reload to pick up the new env var.
+        import importlib
+        import functioncall
+        importlib.reload(functioncall)
+        t0 = time.time()
+        result = functioncall.run_python("while True: pass")
+        elapsed = time.time() - t0
+        # Restore the default for any later tests in the same run.
+        os.environ.pop("BFAGENT_PY_TIMEOUT", None)
+        importlib.reload(functioncall)
+        self.assertIn("error", result)
+        self.assertIn("timeout", result["error"])
+        self.assertLess(elapsed, 5.0, "timeout should fire well under 5s")
+
+
 if __name__ == "__main__":
     unittest.main()

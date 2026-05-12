@@ -45,12 +45,24 @@ def run_python(code):
     (the active conda/venv python) and the pyapp-packaged binary (the
     python pyapp extracts on first run), so this works identically in
     both modes."""
-    cp = subprocess.run(
-        [sys.executable, "-c", code],
-        capture_output=True,
-        text=True,
-        timeout=PY_TIMEOUT,
-    )
+    try:
+        cp = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=PY_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as e:
+        partial_out = e.stdout.decode("utf-8", "replace") if e.stdout else ""
+        partial_err = e.stderr.decode("utf-8", "replace") if e.stderr else ""
+        out, t1 = _truncate(partial_out)
+        err, t2 = _truncate(partial_err)
+        return {
+            "error": f"timeout after {PY_TIMEOUT}s",
+            "stdout": out,
+            "stderr": err,
+            "truncated": t1 or t2,
+        }
     out, t1 = _truncate(cp.stdout)
     err, t2 = _truncate(cp.stderr)
     return {
