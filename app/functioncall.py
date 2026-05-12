@@ -1,10 +1,15 @@
 import os
 import re
+import subprocess
+import sys
 from datetime import datetime, timezone
 
 from mlx_vlm import generate, load
 
 MODEL = os.environ.get("BFAGENT_MODEL", "mlx-community/gemma-4-e2b-it-4bit")
+
+PY_TIMEOUT = int(os.environ.get("BFAGENT_PY_TIMEOUT", "10"))
+PY_MAXBYTES = int(os.environ.get("BFAGENT_PY_MAXBYTES", str(8 * 1024)))
 
 
 # ---- Tool implementations ----
@@ -20,6 +25,39 @@ def get_current_time():
     return {
         "utc": now_utc.isoformat(timespec="seconds"),
         "local": now_utc.astimezone().isoformat(timespec="seconds"),
+    }
+
+
+def _truncate(text):
+    """Cap a stream to PY_MAXBYTES, decoded as UTF-8. Returns (text, was_truncated)."""
+    b = text.encode("utf-8", "replace")
+    if len(b) <= PY_MAXBYTES:
+        return text, False
+    return b[:PY_MAXBYTES].decode("utf-8", "replace") + "\n...[truncated]", True
+
+
+def run_python(code):
+    """Execute `code` in a subprocess via `sys.executable -c <code>` and
+    return stdout/stderr/returncode. Output capped per stream by
+    BFAGENT_PY_MAXBYTES; wall-clock limited by BFAGENT_PY_TIMEOUT.
+
+    sys.executable resolves to a real interpreter under both `make debug`
+    (the active conda/venv python) and the pyapp-packaged binary (the
+    python pyapp extracts on first run), so this works identically in
+    both modes."""
+    cp = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=PY_TIMEOUT,
+    )
+    out, t1 = _truncate(cp.stdout)
+    err, t2 = _truncate(cp.stderr)
+    return {
+        "stdout": out,
+        "stderr": err,
+        "returncode": cp.returncode,
+        "truncated": t1 or t2,
     }
 
 

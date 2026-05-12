@@ -72,5 +72,26 @@ class ParserStringSentinelTests(unittest.TestCase):
         self.assertEqual(self._arg(text), "import sys\nprint(sys.version)")
 
 
+class RunPythonHappyPathTests(unittest.TestCase):
+    def test_prints_stdout(self):
+        from functioncall import run_python
+        result = run_python("print(2 + 2)")
+        self.assertEqual(result["stdout"], "4\n")
+        self.assertEqual(result["stderr"], "")
+        self.assertEqual(result["returncode"], 0)
+        self.assertFalse(result["truncated"])
+
+    def test_propagates_returncode(self):
+        from functioncall import run_python
+        result = run_python("import sys; sys.exit(7)")
+        self.assertEqual(result["returncode"], 7)
+
+    def test_captures_stderr(self):
+        from functioncall import run_python
+        result = run_python("import sys; print('oops', file=sys.stderr)")
+        self.assertIn("oops", result["stderr"])
+        self.assertEqual(result["stdout"], "")
+
+
 if __name__ == "__main__":
     unittest.main()
