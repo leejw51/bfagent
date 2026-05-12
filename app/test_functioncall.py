@@ -38,5 +38,39 @@ class ParserBaselineTests(unittest.TestCase):
         self.assertEqual(parse_tool_calls("hi there, no tool call here"), [])
 
 
+class ParserStringSentinelTests(unittest.TestCase):
+    """The Gemma 4 format wraps string args in <|"|>...<|"|>. Inside
+    that region, `,` and `:` must NOT be treated as arg separators —
+    Python snippets contain both routinely."""
+
+    def _arg(self, text, name="run_python", key="code"):
+        calls = parse_tool_calls(text)
+        self.assertEqual(len(calls), 1, f"expected 1 call, got {calls}")
+        self.assertEqual(calls[0]["function"]["name"], name)
+        return calls[0]["function"]["arguments"][key]
+
+    def test_comma_inside_string_is_not_a_separator(self):
+        text = '<|tool_call>call:run_python{code:<|"|>print([1,2,3])<|"|>}<tool_call|>'
+        self.assertEqual(self._arg(text), "print([1,2,3])")
+
+    def test_colon_inside_string_is_not_a_separator(self):
+        text = '<|tool_call>call:run_python{code:<|"|>d={"a":1}<|"|>}<tool_call|>'
+        self.assertEqual(self._arg(text), 'd={"a":1}')
+
+    def test_braces_inside_string_survive(self):
+        # The outer regex grabs up to `}<tool_call|>`, so an inner `}`
+        # alone is fine as long as it's not followed by `<tool_call|>`.
+        text = '<|tool_call>call:run_python{code:<|"|>print({"k": "v"})<|"|>}<tool_call|>'
+        self.assertEqual(self._arg(text), 'print({"k": "v"})')
+
+    def test_multiline_code_survives(self):
+        text = (
+            '<|tool_call>call:run_python{code:<|"|>'
+            "import sys\nprint(sys.version)"
+            '<|"|>}<tool_call|>'
+        )
+        self.assertEqual(self._arg(text), "import sys\nprint(sys.version)")
+
+
 if __name__ == "__main__":
     unittest.main()

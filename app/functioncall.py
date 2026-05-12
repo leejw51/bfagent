@@ -78,15 +78,62 @@ def _parse_value(v):
     return v
 
 
+_STR_SENTINEL = '<|"|>'
+
+
+def _split_args(body):
+    """Yield (key, value) pairs from a tool-call args body, treating
+    `<|"|>...<|"|>` regions as opaque so commas/colons inside a string
+    argument (e.g. Python source) are not treated as separators."""
+    i, n = 0, len(body)
+    sent_len = len(_STR_SENTINEL)
+    in_str = False
+    key, buf, key_done = None, [], False
+
+    def flush_pair():
+        nonlocal key, buf, key_done
+        if key is not None:
+            yield_key = key
+            yield_val = "".join(buf)
+            key, buf, key_done = None, [], False
+            return yield_key, yield_val
+        return None
+
+    while i < n:
+        if body[i:i + sent_len] == _STR_SENTINEL:
+            buf.append(_STR_SENTINEL)
+            in_str = not in_str
+            i += sent_len
+            continue
+        c = body[i]
+        if not in_str and not key_done and c == ":":
+            key = "".join(buf).strip()
+            buf = []
+            key_done = True
+            i += 1
+            continue
+        if not in_str and c == ",":
+            pair = flush_pair()
+            if pair is not None:
+                yield pair
+            i += 1
+            continue
+        buf.append(c)
+        i += 1
+
+    pair = flush_pair()
+    if pair is not None:
+        yield pair
+
+
 def parse_tool_calls(text):
     calls = []
     for i, m in enumerate(_CALL_RE.finditer(text)):
         args = {}
         body = m.group("args").strip()
         if body:
-            for pair in body.split(","):
-                k, _, v = pair.partition(":")
-                args[k.strip()] = _parse_value(v)
+            for k, v in _split_args(body):
+                args[k] = _parse_value(v)
         calls.append(
             {
                 "id": f"call_{i}",
