@@ -707,6 +707,31 @@ import threading as _threading
 
 _STREAM_DONE = object()  # sentinel pushed onto the queue when the worker exits
 
+# Shared state for routing run_python approvals from the worker thread
+# (where the ChatSink lives) to the Gradio main thread (where the Approve
+# / Deny buttons live). The sink populates _pending["event"] and waits
+# on it; the button click handlers set _pending["decision"] and signal
+# the event. Only one approval is ever in flight (the backend serializes
+# tool calls), so a single slot is enough.
+_pending_lock = _threading.Lock()
+_pending = {
+    "event": None,     # threading.Event the sink is awaiting
+    "decision": False,  # set by the button click before the event fires
+    "info": None,      # last payload dict (id, interpreter, cwd, code)
+}
+
+
+def _resolve_pending(decision: bool) -> None:
+    """Called by the Approve / Deny button handlers. No-op when nothing
+    is pending — clicking the buttons outside of an approval window is
+    harmless."""
+    with _pending_lock:
+        ev = _pending["event"]
+        if ev is None:
+            return
+        _pending["decision"] = decision
+        ev.set()
+
 
 async def _stream_call_async(message, history_msgs, image_path, max_tokens, q):
     image_bytes, image_mime = _read_image(image_path)
@@ -724,18 +749,47 @@ async def _stream_call_async(message, history_msgs, image_path, max_tokens, q):
                 q.put(("error", err))
 
         async def approve(self, payload, _context, **_):
-            # Phase 1: Gradio doesn't yet have an in-UI approval surface.
-            # Refuse so the model sees `denied by user` rather than the
-            # call silently blocking forever. Phase 2 will render the
-            # banner as a chat message with Approve / Deny buttons.
-            q.put(
-                (
-                    "chunk",
-                    "\n[run_python denied — approval UI not yet "
-                    "implemented for the Gradio frontend]\n",
-                )
+            import json as _json
+            try:
+                info = _json.loads(str(payload or "{}"))
+            except _json.JSONDecodeError:
+                info = {"code": str(payload or "")}
+
+            # Render the approval banner as a streamed chunk so the user
+            # sees it in the chat bubble that's currently being built.
+            bar = "=" * 40
+            banner = (
+                f"\n\n{bar}\n"
+                f"**run_python approval required**\n"
+                f"- interpreter: `{info.get('interpreter', '?')}`\n"
+                f"- cwd: `{info.get('cwd', '?')}`\n\n"
+                f"```python\n{info.get('code', '')}\n```\n"
+                f"Click **Approve** or **Deny** below.\n"
+                f"{bar}\n\n"
             )
-            _context.results.decision = False
+            q.put(("chunk", banner))
+
+            # Hand the worker thread off to a blocking wait on a
+            # threading.Event. asyncio.to_thread keeps the event loop
+            # free so the Cap'n Proto connection stays responsive (the
+            # button click arrives over a different RPC, but the same
+            # event loop processes both).
+            event = _threading.Event()
+            with _pending_lock:
+                _pending["event"] = event
+                _pending["decision"] = False
+                _pending["info"] = info
+            try:
+                await asyncio.to_thread(event.wait)
+            finally:
+                with _pending_lock:
+                    decision = _pending["decision"]
+                    _pending["event"] = None
+                    _pending["info"] = None
+
+            verdict = "approved" if decision else "denied"
+            q.put(("chunk", f"\n_[run_python {verdict} by user]_\n\n"))
+            _context.results.decision = decision
 
     async with capnp.kj_loop():
         stream = await capnp.AsyncIoStream.create_connection(
@@ -1045,6 +1099,24 @@ def build_ui():
                         autofocus=True,
                     )
                     send = gr.Button("Send", variant="primary", scale=1)
+                # Approve / Deny for run_python tool calls. Always visible
+                # — a click outside an active approval window is a no-op
+                # (see _resolve_pending). The buttons are deliberately
+                # placed right under the input so they're where the user
+                # is already looking when the agent asks for permission.
+                with gr.Row():
+                    approve_btn = gr.Button(
+                        "Approve run_python", variant="primary", scale=1
+                    )
+                    deny_btn = gr.Button(
+                        "Deny run_python", variant="stop", scale=1
+                    )
+                approve_btn.click(
+                    lambda: _resolve_pending(True), inputs=None, outputs=None
+                )
+                deny_btn.click(
+                    lambda: _resolve_pending(False), inputs=None, outputs=None
+                )
 
             with gr.Column(scale=1, elem_classes=["bf-card", "bf-side-card"]):
                 gr.Markdown("### Image input")
