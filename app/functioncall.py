@@ -36,15 +36,62 @@ def _truncate(text):
     return b[:PY_MAXBYTES].decode("utf-8", "replace") + "\n...[truncated]", True
 
 
+def _request_approval(code):
+    """Show the code + interpreter + cwd on stderr and read y/N from stdin.
+
+    Returns True if the user approves, False otherwise. Honors
+    BFAGENT_PY_AUTO_APPROVE=1 as an escape hatch for unit tests and
+    headless callers. If stdin is not a TTY and the env var isn't set,
+    refuses (returns False) rather than silently auto-approving."""
+    interpreter = sys.executable
+    cwd = os.getcwd()
+    bar = "=" * 60
+    print(f"\n{bar}", file=sys.stderr)
+    print("[run_python] proposed code execution:", file=sys.stderr)
+    print(f"  interpreter: {interpreter}", file=sys.stderr)
+    print(f"  cwd:         {cwd}", file=sys.stderr)
+    print("-" * 60, file=sys.stderr)
+    print(code, file=sys.stderr)
+    print(bar, file=sys.stderr)
+
+    if os.environ.get("BFAGENT_PY_AUTO_APPROVE") == "1":
+        print("[run_python] auto-approved (BFAGENT_PY_AUTO_APPROVE=1)", file=sys.stderr)
+        return True
+    if not sys.stdin.isatty():
+        print(
+            "[run_python] stdin is not a TTY; refusing. "
+            "Set BFAGENT_PY_AUTO_APPROVE=1 to bypass.",
+            file=sys.stderr,
+        )
+        return False
+    try:
+        ans = input("[run_python] approve? (y/N): ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        ans = "n"
+    return ans in ("y", "yes")
+
+
 def run_python(code):
     """Execute `code` in a subprocess via `sys.executable -c <code>` and
     return stdout/stderr/returncode. Output capped per stream by
     BFAGENT_PY_MAXBYTES; wall-clock limited by BFAGENT_PY_TIMEOUT.
 
+    Before executing, the code, interpreter path, and cwd are printed
+    on stderr and approval is read from stdin (y/N). Set
+    BFAGENT_PY_AUTO_APPROVE=1 to skip the prompt — required for
+    non-interactive callers (tests, headless mode).
+
     sys.executable resolves to a real interpreter under both `make debug`
     (the active conda/venv python) and the pyapp-packaged binary (the
     python pyapp extracts on first run), so this works identically in
     both modes."""
+    if not _request_approval(code):
+        return {
+            "error": "denied by user",
+            "stdout": "",
+            "stderr": "",
+            "truncated": False,
+        }
     try:
         cp = subprocess.run(
             [sys.executable, "-c", code],
@@ -116,7 +163,10 @@ TOOLS = [
                 "calls. Use this when you need to compute something, manipulate "
                 "data, or check the environment by running Python code. The "
                 "snippet is run with a wall-clock timeout and per-stream output "
-                "cap; long-running or noisy code will be killed or truncated."
+                "cap; long-running or noisy code will be killed or truncated. "
+                "Execution requires the user to approve each call interactively, "
+                "so they will see the code before it runs — write clear, "
+                "minimal code and explain in your reply what it does."
             ),
             "parameters": {
                 "type": "object",

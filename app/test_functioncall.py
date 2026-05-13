@@ -6,12 +6,17 @@ Runnable as:
 Lives in app/ next to test_rpc.py to match project convention.
 """
 
+import os
 import sys
 import unittest
 from unittest.mock import MagicMock
 
 # Mock mlx_vlm before importing functioncall
 sys.modules['mlx_vlm'] = MagicMock()
+# Auto-approve every run_python call from the test suite so the suite
+# stays non-interactive. The approval gate itself is exercised by
+# ApprovalGateTests, which temporarily clears this env var.
+os.environ["BFAGENT_PY_AUTO_APPROVE"] = "1"
 
 from functioncall import parse_tool_calls
 
@@ -128,6 +133,39 @@ class RunPythonTruncationTests(unittest.TestCase):
         # Total length is cap + marker (a few dozen bytes), well under
         # the raw 100000 the subprocess produced.
         self.assertLess(len(result["stdout"]), 2048)
+
+
+class ApprovalGateTests(unittest.TestCase):
+    """run_python must show the code + interpreter + cwd and require
+    user approval before executing. The escape hatch is
+    BFAGENT_PY_AUTO_APPROVE=1; without it, a non-TTY stdin refuses."""
+
+    def setUp(self):
+        self._saved = os.environ.pop("BFAGENT_PY_AUTO_APPROVE", None)
+
+    def tearDown(self):
+        if self._saved is not None:
+            os.environ["BFAGENT_PY_AUTO_APPROVE"] = self._saved
+        else:
+            # Restore the module-level default so the rest of the suite
+            # stays non-interactive.
+            os.environ["BFAGENT_PY_AUTO_APPROVE"] = "1"
+
+    def test_non_tty_without_env_var_is_refused(self):
+        # Test runner's stdin is not a TTY; with the env var cleared
+        # the call must be denied without executing the subprocess.
+        from functioncall import run_python
+        result = run_python("print('should not run')")
+        self.assertEqual(result.get("error"), "denied by user")
+        self.assertEqual(result["stdout"], "")
+        self.assertNotIn("should not run", result["stdout"])
+
+    def test_env_var_bypass_allows_execution(self):
+        os.environ["BFAGENT_PY_AUTO_APPROVE"] = "1"
+        from functioncall import run_python
+        result = run_python("print('ok')")
+        self.assertEqual(result["stdout"], "ok\n")
+        self.assertEqual(result["returncode"], 0)
 
 
 class RegistrationTests(unittest.TestCase):
