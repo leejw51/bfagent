@@ -1090,26 +1090,30 @@ def build_ui():
                             "</center>"
                         ),
                     )
+                # Send + Approve + Deny share one row. The right column's
+                # CSS forces the chat area to 100vh with overflow:hidden,
+                # which means any row *below* this one gets clipped
+                # off-screen. Keeping all three buttons in the same row
+                # guarantees the user can find Approve / Deny when the
+                # agent surfaces a run_python prompt. Clicks on Approve /
+                # Deny outside an active approval window are no-ops
+                # (see _resolve_pending).
                 with gr.Row():
                     msg = gr.Textbox(
                         placeholder="Ask Gemma anything ...",
                         show_label=False,
                         container=False,
-                        scale=8,
+                        scale=6,
                         autofocus=True,
                     )
-                    send = gr.Button("Send", variant="primary", scale=1)
-                # Approve / Deny for run_python tool calls. Always visible
-                # — a click outside an active approval window is a no-op
-                # (see _resolve_pending). The buttons are deliberately
-                # placed right under the input so they're where the user
-                # is already looking when the agent asks for permission.
-                with gr.Row():
+                    send = gr.Button(
+                        "Send", variant="primary", scale=1, min_width=80
+                    )
                     approve_btn = gr.Button(
-                        "Approve run_python", variant="primary", scale=1
+                        "Approve", variant="secondary", scale=1, min_width=90
                     )
                     deny_btn = gr.Button(
-                        "Deny run_python", variant="stop", scale=1
+                        "Deny", variant="stop", scale=1, min_width=80
                     )
                 approve_btn.click(
                     lambda: _resolve_pending(True), inputs=None, outputs=None
