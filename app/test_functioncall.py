@@ -77,10 +77,18 @@ class ParserStringSentinelTests(unittest.TestCase):
         self.assertEqual(self._arg(text), "import sys\nprint(sys.version)")
 
 
+import asyncio
+
+
+def _run(coro):
+    """Run an async function from a sync test method."""
+    return asyncio.run(coro)
+
+
 class RunPythonHappyPathTests(unittest.TestCase):
     def test_prints_stdout(self):
         from functioncall import run_python
-        result = run_python("print(2 + 2)")
+        result = _run(run_python("print(2 + 2)"))
         self.assertEqual(result["stdout"], "4\n")
         self.assertEqual(result["stderr"], "")
         self.assertEqual(result["returncode"], 0)
@@ -88,26 +96,26 @@ class RunPythonHappyPathTests(unittest.TestCase):
 
     def test_propagates_returncode(self):
         from functioncall import run_python
-        result = run_python("import sys; sys.exit(7)")
+        result = _run(run_python("import sys; sys.exit(7)"))
         self.assertEqual(result["returncode"], 7)
 
     def test_captures_stderr(self):
         from functioncall import run_python
-        result = run_python("import sys; print('oops', file=sys.stderr)")
+        result = _run(run_python("import sys; print('oops', file=sys.stderr)"))
         self.assertIn("oops", result["stderr"])
         self.assertEqual(result["stdout"], "")
 
 
 class RunPythonTimeoutTests(unittest.TestCase):
     def test_infinite_loop_times_out(self):
-        import os, time
+        import time
         os.environ["BFAGENT_PY_TIMEOUT"] = "1"
         # Reload to pick up the new env var.
         import importlib
         import functioncall
         importlib.reload(functioncall)
         t0 = time.time()
-        result = functioncall.run_python("while True: pass")
+        result = _run(functioncall.run_python("while True: pass"))
         elapsed = time.time() - t0
         # Restore the default for any later tests in the same run.
         os.environ.pop("BFAGENT_PY_TIMEOUT", None)
@@ -119,12 +127,12 @@ class RunPythonTimeoutTests(unittest.TestCase):
 
 class RunPythonTruncationTests(unittest.TestCase):
     def test_long_stdout_truncated(self):
-        import os, importlib
+        import importlib
         os.environ["BFAGENT_PY_MAXBYTES"] = "1024"
         import functioncall
         importlib.reload(functioncall)
         # Print well past 1 KB.
-        result = functioncall.run_python("print('x' * 100000)")
+        result = _run(functioncall.run_python("print('x' * 100000)"))
         os.environ.pop("BFAGENT_PY_MAXBYTES", None)
         importlib.reload(functioncall)
         self.assertTrue(result["truncated"])
@@ -133,6 +141,57 @@ class RunPythonTruncationTests(unittest.TestCase):
         # Total length is cap + marker (a few dozen bytes), well under
         # the raw 100000 the subprocess produced.
         self.assertLess(len(result["stdout"]), 2048)
+
+
+class SinkRoutedApprovalTests(unittest.TestCase):
+    """When _active_sink is set, run_python routes its approval prompt
+    through sink.approve(payload) instead of using local stdin / env
+    var. The sink returns a thing whose .decision attribute is the
+    user's choice."""
+
+    def test_sink_approve_called_and_decision_honored(self):
+        import functioncall
+
+        class _FakeResult:
+            def __init__(self, decision):
+                self.decision = decision
+
+        class _FakeSink:
+            def __init__(self, decision):
+                self._decision = decision
+                self.calls = []
+
+            async def approve(self, payload):
+                self.calls.append(payload)
+                return _FakeResult(self._decision)
+
+        # Approval granted: subprocess runs.
+        sink_yes = _FakeSink(True)
+        token = functioncall._active_sink.set(sink_yes)
+        try:
+            result = _run(functioncall.run_python("print('via sink')"))
+        finally:
+            functioncall._active_sink.reset(token)
+        self.assertEqual(result["stdout"], "via sink\n")
+        self.assertEqual(len(sink_yes.calls), 1)
+        # Payload is JSON with the expected fields.
+        import json
+        info = json.loads(sink_yes.calls[0])
+        self.assertEqual(info["code"], "print('via sink')")
+        self.assertIn("interpreter", info)
+        self.assertIn("cwd", info)
+        self.assertIn("id", info)
+
+        # Approval denied: subprocess is skipped, denied dict returned.
+        sink_no = _FakeSink(False)
+        token = functioncall._active_sink.set(sink_no)
+        try:
+            result = _run(functioncall.run_python("print('should not run')"))
+        finally:
+            functioncall._active_sink.reset(token)
+        self.assertEqual(result.get("error"), "denied by user")
+        self.assertEqual(result["stdout"], "")
+        self.assertEqual(len(sink_no.calls), 1)
 
 
 class ApprovalGateTests(unittest.TestCase):
@@ -155,7 +214,7 @@ class ApprovalGateTests(unittest.TestCase):
         # Test runner's stdin is not a TTY; with the env var cleared
         # the call must be denied without executing the subprocess.
         from functioncall import run_python
-        result = run_python("print('should not run')")
+        result = _run(run_python("print('should not run')"))
         self.assertEqual(result.get("error"), "denied by user")
         self.assertEqual(result["stdout"], "")
         self.assertNotIn("should not run", result["stdout"])
@@ -163,7 +222,7 @@ class ApprovalGateTests(unittest.TestCase):
     def test_env_var_bypass_allows_execution(self):
         os.environ["BFAGENT_PY_AUTO_APPROVE"] = "1"
         from functioncall import run_python
-        result = run_python("print('ok')")
+        result = _run(run_python("print('ok')"))
         self.assertEqual(result["stdout"], "ok\n")
         self.assertEqual(result["returncode"], 0)
 

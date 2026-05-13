@@ -16,8 +16,9 @@ struct Turn {
 }
 
 interface ChatSink {
-    chunk @0 (text :Text) -> ();
-    done  @1 (error :Text) -> ();
+    chunk   @0 (text :Text) -> ();
+    done    @1 (error :Text) -> ();
+    approve @2 (payload :Text) -> (decision :Bool);
 }
 
 interface GemmaAgent {

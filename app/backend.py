@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import os
 import tempfile
 
@@ -8,6 +9,7 @@ from mlx_vlm import generate, load, stream_generate
 from mlx_vlm.prompt_utils import apply_chat_template
 from mlx_vlm.utils import load_config
 
+import functioncall
 import session
 from functioncall import IMPL, TOOLS, parse_tool_calls
 from schema import GemmaAgent
@@ -56,12 +58,19 @@ def build_messages(message, history):
     return msgs
 
 
-def run_tool_loop(model, processor, messages, max_tokens):
+async def run_tool_loop(model, processor, messages, max_tokens, sink=None):
     """Drive a tool-calling loop using the HF tokenizer chat template
     (which understands `tools=`). Returns the final assistant text once
     the model stops emitting <|tool_call> blocks. Text-only — no image
     support, since the multimodal apply_chat_template path doesn't
     thread tools through.
+
+    If `sink` is provided (the chatStream path), it is published on the
+    functioncall._active_sink contextvar before each IMPL dispatch so
+    tools that need approval (run_python) can route their prompt back to
+    the client. IMPL entries may be sync or async; coroutines are
+    awaited so async tools can suspend the loop on a client callback
+    without blocking the event loop.
 
     Fallback: if every round emits tool calls (and we therefore never
     get a clean natural-language reply), synthesize a response from the
@@ -94,22 +103,28 @@ def run_tool_loop(model, processor, messages, max_tokens):
                 return "\n".join(f"{n}() = {r}" for n, _, r in executed)
             return text
         messages.append({"role": "assistant", "content": "", "tool_calls": calls})
-        for c in calls:
-            name = c["function"]["name"]
-            args = c["function"]["arguments"]
-            try:
-                result = IMPL[name](**args)
-            except Exception as e:
-                result = f"Error: {e}"
-            executed.append((name, args, result))
-            print(f"[backend] tool {name}({args}) -> {result}", flush=True)
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": c["id"],
-                    "content": str(result),
-                }
-            )
+        token = functioncall._active_sink.set(sink)
+        try:
+            for c in calls:
+                name = c["function"]["name"]
+                args = c["function"]["arguments"]
+                try:
+                    result = IMPL[name](**args)
+                    if inspect.iscoroutine(result):
+                        result = await result
+                except Exception as e:
+                    result = f"Error: {e}"
+                executed.append((name, args, result))
+                print(f"[backend] tool {name}({args}) -> {result}", flush=True)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": c["id"],
+                        "content": str(result),
+                    }
+                )
+        finally:
+            functioncall._active_sink.reset(token)
     # Loop exhausted with the model still wanting more tool calls.
     # Surface what we ran so the user isn't left staring at a blank line.
     if executed:
@@ -151,7 +166,9 @@ class GemmaAgentImpl(GemmaAgent.Server):
                 data = bytes(imageBytes) if imageBytes else b""
                 if not data:
                     messages = build_messages(message, history)
-                    reply = run_tool_loop(self.model, self.processor, messages, tok)
+                    reply = await run_tool_loop(
+                        self.model, self.processor, messages, tok, sink=None
+                    )
                     if not reply:
                         reply = "[empty model output — check backend logs]"
                     _context.results.reply = reply
@@ -211,8 +228,8 @@ class GemmaAgentImpl(GemmaAgent.Server):
                     messages = build_messages(message, history)
                     err = ""
                     try:
-                        reply = run_tool_loop(
-                            self.model, self.processor, messages, tok
+                        reply = await run_tool_loop(
+                            self.model, self.processor, messages, tok, sink=sink
                         )
                         if not reply:
                             reply = "[empty model output — check backend logs]"

@@ -56,6 +56,38 @@ class _PrintingSink(ChatSink.Server):
             sys.stdout.flush()
         self._done.set()
 
+    async def approve(self, payload, _context, **_):
+        """Server-initiated approval prompt for a side-effectful tool.
+        Renders to the CLI's own terminal (which is the user's terminal,
+        unlike the backend's), and reads y/N from stdin. The Cap'n Proto
+        await on the backend side blocks the tool loop until we return."""
+        import json as _json
+        try:
+            info = _json.loads(str(payload or "{}"))
+        except _json.JSONDecodeError:
+            info = {"code": str(payload or "")}
+        bar = "=" * 60
+        sys.stdout.write(f"\n{bar}\n")
+        sys.stdout.write("[run_python] proposed code execution:\n")
+        sys.stdout.write(f"  interpreter: {info.get('interpreter', '?')}\n")
+        sys.stdout.write(f"  cwd:         {info.get('cwd', '?')}\n")
+        sys.stdout.write("-" * 60 + "\n")
+        sys.stdout.write(str(info.get("code", "")) + "\n")
+        sys.stdout.write(bar + "\n")
+        sys.stdout.flush()
+        try:
+            ans = await asyncio.to_thread(
+                input, "[run_python] approve? (y/N): "
+            )
+        except (EOFError, KeyboardInterrupt):
+            ans = "n"
+        decision = ans.strip().lower() in ("y", "yes")
+        sys.stdout.write(
+            f"[run_python] {'approved' if decision else 'denied'}\n"
+        )
+        sys.stdout.flush()
+        _context.results.decision = decision
+
     async def wait(self) -> None:
         await self._done.wait()
 

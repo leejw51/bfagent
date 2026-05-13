@@ -15,6 +15,14 @@ struct Turn {
 interface ChatSink {
     chunk @0 (text :Text) -> ();
     done  @1 (error :Text) -> ();
+
+    # The server invokes approve() before running any side-effectful tool
+    # (currently: run_python) and awaits the client's decision. `payload`
+    # is JSON with keys {id, interpreter, cwd, code}. The client prompts
+    # the user (stdin for the CLI, in-chat buttons for Gradio) and returns
+    # the decision. Held opens block the tool loop until resolved, but the
+    # event loop stays free, so other RPCs keep flowing.
+    approve @2 (payload :Text) -> (decision :Bool);
 }
 
 interface GemmaAgent {

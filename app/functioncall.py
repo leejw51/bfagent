@@ -1,3 +1,6 @@
+import contextvars
+import itertools
+import json
 import os
 import re
 import subprocess
@@ -10,6 +13,15 @@ MODEL = os.environ.get("BFAGENT_MODEL", "mlx-community/gemma-4-e2b-it-4bit")
 
 PY_TIMEOUT = int(os.environ.get("BFAGENT_PY_TIMEOUT", "10"))
 PY_MAXBYTES = int(os.environ.get("BFAGENT_PY_MAXBYTES", str(8 * 1024)))
+
+# Set by backend.run_tool_loop before each IMPL dispatch. When non-None,
+# run_python routes its approval prompt through sink.approve(payload) so
+# the prompt surfaces wherever the client lives (CLI terminal, Gradio
+# UI) instead of on the backend's stdin. When None — non-streaming chat,
+# unit tests, headless callers — run_python falls back to the local
+# stdin / BFAGENT_PY_AUTO_APPROVE behavior.
+_active_sink = contextvars.ContextVar("bfagent_active_sink", default=None)
+_call_id_seq = itertools.count(1)
 
 
 # ---- Tool implementations ----
@@ -36,22 +48,27 @@ def _truncate(text):
     return b[:PY_MAXBYTES].decode("utf-8", "replace") + "\n...[truncated]", True
 
 
-def _request_approval(code):
-    """Show the code + interpreter + cwd on stderr and read y/N from stdin.
+def _build_approval_payload(code):
+    """Common payload for sink-based and local-fallback approval."""
+    return {
+        "id": f"runpy-{next(_call_id_seq)}",
+        "interpreter": sys.executable,
+        "cwd": os.getcwd(),
+        "code": code,
+    }
 
-    Returns True if the user approves, False otherwise. Honors
-    BFAGENT_PY_AUTO_APPROVE=1 as an escape hatch for unit tests and
-    headless callers. If stdin is not a TTY and the env var isn't set,
-    refuses (returns False) rather than silently auto-approving."""
-    interpreter = sys.executable
-    cwd = os.getcwd()
+
+def _approve_locally(payload):
+    """Local stdin fallback used when no client sink is active.
+
+    Honors BFAGENT_PY_AUTO_APPROVE=1; refuses if stdin is not a TTY."""
     bar = "=" * 60
     print(f"\n{bar}", file=sys.stderr)
     print("[run_python] proposed code execution:", file=sys.stderr)
-    print(f"  interpreter: {interpreter}", file=sys.stderr)
-    print(f"  cwd:         {cwd}", file=sys.stderr)
+    print(f"  interpreter: {payload['interpreter']}", file=sys.stderr)
+    print(f"  cwd:         {payload['cwd']}", file=sys.stderr)
     print("-" * 60, file=sys.stderr)
-    print(code, file=sys.stderr)
+    print(payload["code"], file=sys.stderr)
     print(bar, file=sys.stderr)
 
     if os.environ.get("BFAGENT_PY_AUTO_APPROVE") == "1":
@@ -71,21 +88,44 @@ def _request_approval(code):
     return ans in ("y", "yes")
 
 
-def run_python(code):
+async def _approve(payload):
+    """Route approval through the active client sink if there is one,
+    otherwise fall back to local stdin/env-var handling."""
+    sink = _active_sink.get()
+    if sink is not None:
+        try:
+            result = await sink.approve(payload=json.dumps(payload))
+        except Exception as e:
+            print(
+                f"[run_python] sink.approve failed ({type(e).__name__}: {e}); "
+                "falling back to local approval.",
+                file=sys.stderr,
+            )
+            return _approve_locally(payload)
+        return bool(getattr(result, "decision", False))
+    return _approve_locally(payload)
+
+
+async def run_python(code):
     """Execute `code` in a subprocess via `sys.executable -c <code>` and
     return stdout/stderr/returncode. Output capped per stream by
     BFAGENT_PY_MAXBYTES; wall-clock limited by BFAGENT_PY_TIMEOUT.
 
-    Before executing, the code, interpreter path, and cwd are printed
-    on stderr and approval is read from stdin (y/N). Set
-    BFAGENT_PY_AUTO_APPROVE=1 to skip the prompt — required for
-    non-interactive callers (tests, headless mode).
+    Before executing, the code, interpreter path, and cwd are presented
+    to the user. When this call originated from a chatStream RPC, the
+    backend has stashed the client's ChatSink on a contextvar so the
+    approval prompt is routed back to the client (CLI terminal, Gradio
+    UI) via sink.approve(...). When there's no active sink — non-
+    streaming chat(), unit tests, headless callers — the prompt falls
+    back to local stdin, with BFAGENT_PY_AUTO_APPROVE=1 as the escape
+    hatch.
 
     sys.executable resolves to a real interpreter under both `make debug`
     (the active conda/venv python) and the pyapp-packaged binary (the
     python pyapp extracts on first run), so this works identically in
     both modes."""
-    if not _request_approval(code):
+    payload = _build_approval_payload(code)
+    if not await _approve(payload):
         return {
             "error": "denied by user",
             "stdout": "",

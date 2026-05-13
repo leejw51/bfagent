@@ -723,6 +723,20 @@ async def _stream_call_async(message, history_msgs, image_path, max_tokens, q):
             if err:
                 q.put(("error", err))
 
+        async def approve(self, payload, _context, **_):
+            # Phase 1: Gradio doesn't yet have an in-UI approval surface.
+            # Refuse so the model sees `denied by user` rather than the
+            # call silently blocking forever. Phase 2 will render the
+            # banner as a chat message with Approve / Deny buttons.
+            q.put(
+                (
+                    "chunk",
+                    "\n[run_python denied — approval UI not yet "
+                    "implemented for the Gradio frontend]\n",
+                )
+            )
+            _context.results.decision = False
+
     async with capnp.kj_loop():
         stream = await capnp.AsyncIoStream.create_connection(
             host=BACKEND_HOST, port=BACKEND_PORT
