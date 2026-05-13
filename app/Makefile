@@ -1,5 +1,10 @@
 APP_NAME    := hello
-VERSION     := 0.3.0
+# Single source of truth: app/pyproject.toml. Keep them in sync by
+# parsing the version out at make-time so a bump in one place doesn't
+# silently leave the other behind (the v0.1.2 build failed because
+# pyproject said 0.3.1 but the Makefile still hard-coded 0.3.0, so
+# pyapp was handed a path to a wheel that no longer existed).
+VERSION     := $(shell awk -F'"' '/^version[[:space:]]*=/ {print $$2; exit}' pyproject.toml)
 
 BINARY      := bfagent
 ENTRY       := program:main
